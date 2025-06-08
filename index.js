@@ -2,19 +2,10 @@ import os from 'os'
 import Repository from './lib/repository.js'
 import { createServer } from './server/http.js'
 
-async function main ({ port = 3000, https = false } = {}) {
-  const useHttps = https || process.env.HTTPS === 'true'
-  const protocol = useHttps ? 'https' : 'http'
-  
-  createServer(new Repository(), useHttps)
+async function main ({ port = 3000 } = {}) {
+  createServer(new Repository())
     .listen(port, () => {
-      console.log(`Server running at ${protocol}://${os.hostname()}:${port} (or ${protocol}://localhost:${port})`)
-      if (useHttps) {
-        console.log('HTTPS enabled - mixed content issues should be resolved')
-      } else {
-        console.log('Running on HTTP - may have mixed content issues with HTTPS sites')
-        console.log('To enable HTTPS, set HTTPS=true environment variable and ensure SSL certificates are in ./ssl/ directory')
-      }
+      console.log(`Server running at http://${os.hostname()}:${port} (or http://localhost:${port})`)
     })
 }
 

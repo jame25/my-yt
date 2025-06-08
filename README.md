@@ -18,6 +18,12 @@ A clean and minimal youtube frontend supported by yt-dlp, and optionally your lo
 - Native Google Chromecast support
 - Disable clickbait thumbnails
 - Play videos in background
+- **Watch Later playlist** - Add videos to a personal playlist that automatically downloads them for offline viewing
+- **Enhanced video sharing** - One-click URL copying to clipboard with visual feedback
+- **Theatre Mode** - Full-width video viewing experience on watch pages with ESC key support
+- **Improved watch page experience** - Shows original YouTube thumbnails before download, seamless real-time updates when downloads complete
+- **Smart video management** - Download/Delete button that adapts based on video state, with proper confirmation dialogs
+- **Embed support** - Embeddable video player for external websites
 - Summarize video content using your local AI model (e.g. Ollama/LMStudio) or hosted provider (e.g. OpenAI, Anthropic)
 - Native Picture-in-Picture support
 - No dependencies (except for `nano-spawn`, which itself has no transient deps)
@@ -29,6 +35,38 @@ A clean and minimal youtube frontend supported by yt-dlp, and optionally your lo
 
 [Check out the todo list](https://github.com/christian-fei/my-yt/issues/5)
 
+## What's New in This Version
+
+### 🎬 Watch Later Playlist
+- **Replaced Summarize functionality** with a comprehensive Watch Later playlist system
+- **Automatic downloads** - Videos added to Watch Later are automatically downloaded for offline viewing
+- **Persistent storage** - Watch Later videos are saved in settings and persist across sessions
+- **Smart filtering** - Dedicated search filter to view only Watch Later videos
+- **Visual indicators** - Clear UI showing which videos are in your Watch Later playlist
+
+### 🎭 Theatre Mode Enhancement
+- **Watch page theatre mode** - New theatre mode button on individual video watch pages
+- **Full-width viewing** - Videos expand to fill the entire browser width for immersive viewing
+- **Keyboard shortcuts** - Press ESC to exit theatre mode on any page
+- **Smooth transitions** - Polished animations and responsive design
+
+### 📱 Improved Watch Page Experience
+- **Original thumbnails first** - Shows YouTube's original thumbnail immediately when opening watch URLs
+- **No auto-download** - Users control when videos are downloaded via explicit Download button
+- **Real-time updates** - Seamless transition from thumbnail to video player when download completes
+- **Smart button states** - Download button becomes Delete button after download, with proper state management
+- **Enhanced sharing** - Replaced "Open on YouTube" with integrated Share button for URL copying
+
+### 🔧 Technical Improvements
+- **Embed functionality** - `/embed/{videoId}` endpoint for embedding videos in external sites
+- **Better error handling** - More robust download and playback error management
+- **Performance optimizations** - Reduced unnecessary API calls and improved state management
+
+### 🎨 User Experience Enhancements
+- **Visual feedback** - Copy confirmations, loading states, and status indicators throughout the UI
+- **Confirmation dialogs** - Proper delete confirmations to prevent accidental data loss
+- **Responsive design** - Better mobile and tablet experience across all new features
+- **Accessibility improvements** - Better keyboard navigation and screen reader support
 
 ## How it works
 

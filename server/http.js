@@ -1,6 +1,4 @@
 import http from 'http'
-import https from 'https'
-import fs from 'fs'
 import { URL } from 'url'
 import { handleSSE, broadcastSSE } from './sse.js'
 import { updateAndPersistVideos } from '../lib/update-videos.js'
@@ -9,7 +7,7 @@ import apiHandler from './router/api.js'
 import appHandler from './router/app.js'
 import Repository from '../lib/repository.js'
 
-export function createServer (repo = new Repository(), useHttps = false) {
+export function createServer (repo = new Repository()) {
   const stateChangeHandler = {
     get (target, key) {
       if (typeof target[key] === 'object' && target[key] !== null) {
@@ -58,10 +56,9 @@ export function createServer (repo = new Repository(), useHttps = false) {
     })
   }
 
-  const requestHandler = async (req, res) => {
+  return http.createServer(async (req, res) => {
     try {
-      const protocol = useHttps ? 'https' : 'http'
-      const url = new URL(req.url, `${protocol}://${req.headers.host}`)
+      const url = new URL(req.url, `http://${req.headers.host}`)
 
       if (req.headers.accept && req.headers.accept.indexOf('text/event-stream') >= 0) {
         handleSSE(res, connections)
@@ -74,20 +71,5 @@ export function createServer (repo = new Repository(), useHttps = false) {
     } catch (error) {
       console.error(error)
     }
-  }
-
-  if (useHttps) {
-    try {
-      const options = {
-        key: fs.readFileSync('./ssl/key.pem'),
-        cert: fs.readFileSync('./ssl/cert.pem')
-      }
-      return https.createServer(options, requestHandler)
-    } catch (error) {
-      console.warn('HTTPS certificates not found, falling back to HTTP')
-      return http.createServer(requestHandler)
-    }
-  }
-
-  return http.createServer(requestHandler)
+  })
 }
