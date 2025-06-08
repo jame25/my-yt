@@ -4,7 +4,7 @@ import querystring from 'querystring'
 import { summarizeVideo } from '../../lib/subtitles-summary.js'
 import { broadcastSSE } from '../sse.js'
 import { downloadVideo, extractIdFromUrl, isUnsupportedUrl, isYouTubeUrl } from '../../lib/youtube.js'
-import { updateAndPersistVideosForChannel } from '../../lib/update-videos.js'
+import { updateAndPersistVideosForChannel, updateAndPersistVideos } from '../../lib/update-videos.js'
 
 const llmDefaults = {
   model: 'meta-llama-3.1-8b-instruct',
@@ -26,13 +26,17 @@ export default function apiHandler (req, res, repo, connections = [], state = {}
   const url = new URL(req.url, `http://${req.headers.host}`)
 
   if (url.pathname === '/api/channels' && req.method === 'GET') { return getChannelHandler(req, res, repo) }
+  if (url.pathname === '/api/channels/display-names' && req.method === 'GET') { return getChannelDisplayNamesHandler(req, res, repo) }
   if (url.pathname === '/api/channels' && req.method === 'POST') { return addChannelHandler(req, res, repo, connections) }
   if (url.pathname === '/api/channels' && req.method === 'DELETE') { return deleteChannelHandler(req, res, repo) }
+  if (url.pathname === '/api/channels/import' && req.method === 'POST') { return importChannelsHandler(req, res, repo, connections) }
+  if (url.pathname === '/api/refresh-videos' && req.method === 'POST') { return refreshVideosHandler(req, res, repo, connections) }
   if (url.pathname === '/api/download-video' && req.method === 'POST') { return downloadVideoHandler(req, res, repo, connections, state) }
   if (url.pathname === '/api/summarize-video' && req.method === 'POST') { return summarizeVideoHandler(req, res, repo, connections, state, llmSettings) }
   if (url.pathname === '/api/ignore-video' && req.method === 'POST') { return ignoreVideoHandler(req, res, repo, connections) }
   if (url.pathname === '/api/delete-video' && req.method === 'POST') { return deleteVideoHandler(req, res, repo, connections) }
   if (url.pathname === '/api/videos' && req.method === 'GET') { return searchVideosHandler(req, res, repo) }
+  if (url.pathname.match(/\/api\/video\/.*/) && req.method === 'GET') { return getVideoHandler(req, res, repo) }
   if (url.pathname === '/api/video-quality' && req.method === 'GET') { return getVideoQualityHandler(req, res, repo) }
   if (url.pathname === '/api/video-quality' && req.method === 'POST') { return setVideoQualityHandler(req, res, repo) }
   if (url.pathname === '/api/disk-usage' && req.method === 'GET') { return diskUsageHandler(req, res, repo) }
@@ -42,6 +46,13 @@ export default function apiHandler (req, res, repo, connections = [], state = {}
   if (url.pathname === '/api/excluded-terms' && req.method === 'GET') { return getExcludedTermsHandler(req, res, repo) }
   if (url.pathname === '/api/excluded-terms' && req.method === 'POST') { return addExcludedTermHandler(req, res, repo) }
   if (url.pathname === '/api/excluded-terms' && req.method === 'DELETE') { return removeExcludedTermHandler(req, res, repo) }
+  if (url.pathname === '/api/auto-cleanup-settings' && req.method === 'GET') { return getAutoCleanupSettingsHandler(req, res, repo) }
+  if (url.pathname === '/api/auto-cleanup-settings' && req.method === 'POST') { return setAutoCleanupSettingsHandler(req, res, repo) }
+  if (url.pathname === '/api/auto-cleanup-preview' && req.method === 'GET') { return getAutoCleanupPreviewHandler(req, res, repo) }
+  if (url.pathname === '/api/run-auto-cleanup' && req.method === 'POST') { return runAutoCleanupHandler(req, res, repo, connections) }
+  if (url.pathname === '/api/watch-later' && req.method === 'POST') { return addToWatchLaterHandler(req, res, repo, connections) }
+  if (url.pathname === '/api/watch-later' && req.method === 'DELETE') { return removeFromWatchLaterHandler(req, res, repo, connections) }
+  if (url.pathname.match(/\/api\/watch-later\/.*/) && req.method === 'GET') { return checkWatchLaterHandler(req, res, repo) }
   if (url.pathname.match(/\/api\/videos\/.*/) && req.method === 'GET') { return watchVideoHandler(req, res, repo, connections) }
   if (url.pathname.match(/\/api\/captions\/.*/) && req.method === 'GET') { return captionsHandler(req, res, repo) }
 
@@ -53,6 +64,16 @@ async function getChannelHandler (req, res, repo) {
   const channels = repo.getChannels()
   res.writeHead(200, { 'Content-Type': 'application/json' })
   return res.end(JSON.stringify(channels))
+}
+
+async function getChannelDisplayNamesHandler (req, res, repo) {
+  const channels = repo.getChannels()
+  const displayNames = {}
+  channels.forEach(channel => {
+    displayNames[channel.name] = channel.displayName || channel.name
+  })
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  return res.end(JSON.stringify(displayNames))
 }
 
 async function addChannelHandler (req, res, repo, connections = []) {
@@ -91,6 +112,82 @@ async function deleteChannelHandler (req, res, repo) {
   repo.deleteChannel(name)
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   return res.end('Channel deleted')
+}
+
+async function importChannelsHandler (req, res, repo, connections = []) {
+  const body = await getBody(req)
+  const { channels } = JSON.parse(body)
+
+  if (!Array.isArray(channels) || channels.length === 0) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' })
+    return res.end('Invalid channels data')
+  }
+
+  let added = 0
+  let skipped = 0
+  let failed = 0
+  const allNewVideos = []
+
+  for (const channel of channels) {
+    try {
+      let channelName = channel.name.trim()
+      channelName = channelName.startsWith('@') ? channelName.substring(1) : channelName
+
+      if (repo.channelExists(channelName)) {
+        skipped++
+        continue
+      }
+
+      const videos = await updateAndPersistVideosForChannel(channelName, repo)
+      if (Array.isArray(videos)) {
+        repo.addChannel(channelName, channel.title)
+        allNewVideos.push(...videos)
+        added++
+      } else {
+        failed++
+      }
+    } catch (error) {
+      console.error('Error importing channel:', channel, error)
+      failed++
+    }
+  }
+
+  if (allNewVideos.length > 0) {
+    broadcastSSE(JSON.stringify({ type: 'new-videos', videos: allNewVideos }), connections)
+  }
+
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  return res.end(`Import complete: ${added} added, ${skipped} skipped, ${failed} failed`)
+}
+
+async function refreshVideosHandler (req, res, repo, connections = []) {
+  try {
+    broadcastSSE(JSON.stringify({ type: 'download-log-line', line: 'Manual refresh started...' }), connections)
+    
+    await updateAndPersistVideos(repo, (err, data) => {
+      if (err) {
+        console.error(err)
+        broadcastSSE(JSON.stringify({ type: 'download-log-line', line: `Error updating ${err.message}` }), connections)
+        return
+      }
+      const { name, videos } = data
+      const newVideos = videos.filter(v => v.addedAt > Date.now() - 60000) // Videos added in last minute
+      if (newVideos.length > 0) {
+        console.log('new videos for channel', name, newVideos.length)
+        broadcastSSE(JSON.stringify({ type: 'new-videos', name, videos: newVideos }), connections)
+        broadcastSSE(JSON.stringify({ type: 'download-log-line', line: `Found ${newVideos.length} new videos for channel ${name}` }), connections)
+      } else {
+        broadcastSSE(JSON.stringify({ type: 'download-log-line', line: `No new videos for channel ${name}` }), connections)
+      }
+    })
+
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    return res.end('Refresh started')
+  } catch (error) {
+    console.error('Error refreshing videos:', error)
+    res.writeHead(500, { 'Content-Type': 'text/plain' })
+    return res.end('Error starting refresh')
+  }
 }
 
 async function downloadVideoHandler (req, res, repo, connections = [], state = {}) {
@@ -177,6 +274,25 @@ export function searchVideosHandler (req, res, repo) {
   const videos = repo.getVideos(query)
   res.writeHead(200, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(videos))
+}
+
+function getVideoHandler (req, res, repo) {
+  const videoId = req.url.replace('/api/video/', '')
+  const video = repo.getVideo(videoId)
+  
+  if (video) {
+    // Add watch later status
+    const watchLaterIds = repo.getWatchLaterVideos()
+    const videoWithWatchLater = {
+      ...video,
+      watchLater: watchLaterIds.includes(video.id)
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(videoWithWatchLater))
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'Video not found' }))
+  }
 }
 
 function getVideoQualityHandler (req, res, repo) {
@@ -371,6 +487,7 @@ function watchVideoHandler (req, res, repo, connections = []) {
   fileStream.pipe(res)
 }
 
+
 function captionsHandler (req, res) {
   const captionsPath = './data' + req.url.replace('api/captions', 'videos') + '.en.vtt'
   if (!fs.existsSync(captionsPath)) {
@@ -397,4 +514,233 @@ function getQuery (req) {
   return (req.url && req.url.indexOf('?') >= 0)
     ? querystring.parse(req.url.substring(req.url.indexOf('?') + 1))
     : {}
+}
+
+async function getAutoCleanupSettingsHandler (req, res, repo) {
+  const settings = repo.getAutoCleanupSettings()
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(settings))
+}
+
+async function setAutoCleanupSettingsHandler (req, res, repo) {
+  const body = await getBody(req)
+  const settings = JSON.parse(body)
+  
+  repo.setAutoCleanupSettings(settings)
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(settings))
+}
+
+async function getAutoCleanupPreviewHandler (req, res, repo) {
+  const query = getQuery(req)
+  const days = parseInt(query.days) || 30
+  const hours = parseInt(query.hours) || 0
+  
+  const videos = repo.getAllVideos()
+  const cutoffDate = Date.now() - ((days * 24 + hours) * 60 * 60 * 1000)
+  
+  console.log('Auto-cleanup preview:', { totalVideos: videos.length, days, hours, cutoffDate: new Date(cutoffDate) })
+  
+  // Check how many videos are marked as downloaded
+  const downloadedVideos = videos.filter(v => v.downloaded)
+  console.log('Videos marked as downloaded:', downloadedVideos.length)
+  
+  // Check what files actually exist
+  try {
+    const actualFiles = fs.readdirSync('./data/videos').filter(f => f.endsWith('.mp4') || f.endsWith('.webm'))
+    console.log('Actual video files found:', actualFiles.length, actualFiles)
+  } catch (err) {
+    console.log('Error reading videos directory:', err.message)
+  }
+  
+  const eligibleVideos = []
+  let totalSize = 0
+  
+  // Check each video that's marked as downloaded
+  videos.forEach(video => {
+    if (!video.downloaded) {
+      console.log(`Video ${video.id} not marked as downloaded`)
+      return
+    }
+    
+    try {
+      // Check if actual files exist and get their modification date
+      const filenames = fs.readdirSync('./data/videos').filter(f => f.startsWith(video.id))
+      
+      if (filenames.length === 0) return // No files found
+      
+      // Get the oldest file modification date (when it was downloaded)
+      let oldestFileDate = Date.now()
+      let videoSize = 0
+      
+      filenames.forEach(filename => {
+        const filePath = `./data/videos/${filename}`
+        const stats = fs.statSync(filePath)
+        videoSize += stats.size
+        if (stats.mtime.getTime() < oldestFileDate) {
+          oldestFileDate = stats.mtime.getTime()
+        }
+      })
+      
+      const isOld = oldestFileDate < cutoffDate
+      const hoursOld = Math.round((Date.now() - oldestFileDate) / (1000 * 60 * 60) * 10) / 10
+      console.log(`Video ${video.id}: ${video.title}, downloaded: ${new Date(oldestFileDate)}, ${hoursOld} hours old, cutoff: ${days} days ${hours} hours, isOld: ${isOld}, size: ${(videoSize / Math.pow(10, 9)).toFixed(3)}GB`)
+      
+      if (isOld) {
+        eligibleVideos.push(video)
+        totalSize += videoSize
+      }
+      
+    } catch (err) {
+      console.log(`Error checking video ${video.id}:`, err.message)
+    }
+  })
+  
+  console.log('Eligible videos for cleanup:', eligibleVideos.length)
+  
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({
+    videoCount: eligibleVideos.length,
+    totalSize: `${(totalSize / Math.pow(10, 9)).toFixed(3)}GB`
+  }))
+}
+
+async function runAutoCleanupHandler (req, res, repo, connections = []) {
+  const body = await getBody(req)
+  const { days, hours } = JSON.parse(body)
+  
+  const videos = repo.getAllVideos()
+  const cutoffDate = Date.now() - ((days * 24 + hours) * 60 * 60 * 1000)
+  
+  console.log('Running auto-cleanup:', { totalVideos: videos.length, days, hours, cutoffDate: new Date(cutoffDate) })
+  
+  const videosToDelete = []
+  
+  // Check each video that's marked as downloaded
+  videos.forEach(video => {
+    if (!video.downloaded) return
+    
+    try {
+      // Check if actual files exist and get their modification date
+      const filenames = fs.readdirSync('./data/videos').filter(f => f.startsWith(video.id))
+      
+      if (filenames.length === 0) return // No files found
+      
+      // Get the oldest file modification date (when it was downloaded)
+      let oldestFileDate = Date.now()
+      
+      filenames.forEach(filename => {
+        const filePath = `./data/videos/${filename}`
+        const stats = fs.statSync(filePath)
+        if (stats.mtime.getTime() < oldestFileDate) {
+          oldestFileDate = stats.mtime.getTime()
+        }
+      })
+      
+      const isOld = oldestFileDate < cutoffDate
+      const hoursOld = Math.round((Date.now() - oldestFileDate) / (1000 * 60 * 60) * 10) / 10
+      console.log(`Video ${video.id}: ${video.title}, downloaded: ${new Date(oldestFileDate)}, ${hoursOld} hours old, cutoff: ${days} days ${hours} hours, isOld: ${isOld}`)
+      
+      if (isOld) {
+        videosToDelete.push(video)
+      }
+      
+    } catch (err) {
+      console.log(`Error checking video ${video.id}:`, err.message)
+    }
+  })
+  
+  let deletedCount = 0
+  let freedSpace = 0
+  
+  for (const video of videosToDelete) {
+    try {
+      const filenames = fs.readdirSync('./data/videos').filter(f => f.startsWith(video.id))
+      
+      for (const filename of filenames) {
+        const filePath = `./data/videos/${filename}`
+        const stats = fs.statSync(filePath)
+        freedSpace += stats.size
+        fs.unlinkSync(filePath)
+        
+        broadcastSSE(JSON.stringify({ 
+          type: 'download-log-line', 
+          line: `Auto-cleanup: deleted ${filename}` 
+        }), connections)
+      }
+      
+      repo.updateVideo(video.id, { downloaded: false })
+      deletedCount++
+      
+    } catch (error) {
+      console.error(`Error deleting video ${video.id}:`, error)
+      broadcastSSE(JSON.stringify({ 
+        type: 'download-log-line', 
+        line: `Auto-cleanup error: failed to delete ${video.id}` 
+      }), connections)
+    }
+  }
+  
+  repo.saveVideos()
+  
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({
+    deletedCount,
+    freedSpace: `${(freedSpace / Math.pow(10, 9)).toFixed(3)}GB`
+  }))
+}
+
+async function addToWatchLaterHandler (req, res, repo, connections = []) {
+  const body = await getBody(req)
+  const { videoId } = JSON.parse(body)
+
+  const added = repo.addToWatchLater(videoId)
+  
+  if (added) {
+    // Download the video if it's not already downloaded
+    const video = repo.getVideo(videoId)
+    if (video && !video.downloaded) {
+      downloadVideo(videoId, repo, (line) => {
+        broadcastSSE(JSON.stringify({ type: 'download-log-line', line }), connections)
+      })
+        .then(() => {
+          const updatedVideo = repo.getVideo(videoId)
+          broadcastSSE(JSON.stringify({ type: 'downloaded', videoId, downloaded: true, video: updatedVideo }), connections)
+        })
+        .catch((error) => {
+          broadcastSSE(JSON.stringify({ type: 'download-log-line', line: error.stderr }), connections)
+        })
+    }
+    
+    broadcastSSE(JSON.stringify({ type: 'watch-later-added', videoId }), connections)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: true }))
+  } else {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: false, message: 'Already in watch later' }))
+  }
+}
+
+async function removeFromWatchLaterHandler (req, res, repo, connections = []) {
+  const body = await getBody(req)
+  const { videoId } = JSON.parse(body)
+
+  const removed = repo.removeFromWatchLater(videoId)
+  
+  if (removed) {
+    broadcastSSE(JSON.stringify({ type: 'watch-later-removed', videoId }), connections)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: true }))
+  } else {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: false, message: 'Not in watch later' }))
+  }
+}
+
+async function checkWatchLaterHandler (req, res, repo) {
+  const videoId = req.url.replace('/api/watch-later/', '')
+  const inWatchLater = repo.isInWatchLater(videoId)
+  
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ inWatchLater }))
 }

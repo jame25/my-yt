@@ -17,7 +17,7 @@ class ManageChannelsForm extends HTMLElement {
         const $container = this.querySelector('#manage-channels')
         $container.innerHTML = /* html */`
         ${channels.map(channel =>
-          /* html */`<div style="margin-bottom: 10px" tabindex=0 data-channel="${channel.name}" class="channel">❌ ${channel.name}</div>`).join('')}
+          /* html */`<div style="margin-bottom: 10px" tabindex=0 data-channel="${channel.name}" class="channel">❌ ${channel.displayName || channel.name}</div>`).join('')}
       `
       })
       .then(this.registerEvents.bind(this))

@@ -3,6 +3,24 @@ import { addClickListener, removeClickListener, addToast } from '../lib/utils.js
 import Store from '../lib/store.js'
 const store = new Store()
 
+let channelDisplayNames = {}
+
+// Fetch channel display names once
+async function fetchChannelDisplayNames() {
+  try {
+    const response = await fetch('/api/channels/display-names')
+    channelDisplayNames = await response.json()
+  } catch (error) {
+    console.error('Failed to fetch channel display names:', error)
+  }
+}
+
+// Initialize display names
+fetchChannelDisplayNames()
+
+// Export function to refresh display names (for when new channels are imported)
+window.refreshChannelDisplayNames = fetchChannelDisplayNames
+
 class VideoElement extends HTMLElement {
   constructor () {
     super()
@@ -55,6 +73,7 @@ class VideoElement extends HTMLElement {
           <div tabindex="0" class="play video-placeholder" style="background-image: url(${this.video.thumbnail})">
             <div class="play-icon"></div>
             <span class="info-duration">${this.video.duration || 'N/A'}</span>
+            <span class="download-indicator">✅</span>
           </div>
         </div>
         `
@@ -64,10 +83,9 @@ class VideoElement extends HTMLElement {
           <span class="info-duration">${this.video.duration || 'N/A'}</span>
         </div>
       `}
-      <span class="action ignore" tabindex="0">${this.video.ignored ? 'unignore' : 'ignore'}</span>
       <h4 class="title">${this.video.title}</h4>
       <div class="info">
-        <span class="channel-name">${this.video.channelName}</span>
+        <span class="channel-name">${channelDisplayNames[this.video.channelName] || this.video.channelName}</span>
         <div class="flex">
           <span>${this.video.viewCount}</span>
           <span>${tryFormatDate(this.video.publishedAt)}</span>
@@ -79,10 +97,10 @@ class VideoElement extends HTMLElement {
           : /* html */`<span tabindex="0"  class="action download" data-video-id="${this.video.id}">⬇️ Download</span>`}
         ${store.get(store.useTLDWTubeKey)
           /* html */? `<a target="_blank" href="https://tldw.tube/?v=${this.video.id}">📖 tldw.tube</a>`
-          : !this.video.summary
-          ? /* html */`<span tabindex="0"  class="action summarize" data-video-id="${this.video.id}">📖 Summarize</span>`
-          : /* html */`<span tabindex="0"  class="action show-summary" data-video-id="${this.video.id}">📖 Summary</span>`}
-        <a href="https://www.youtube.com/watch?v=${this.video.id}" class="action open-externally" target="_blank">📺 external</a>
+          : this.video.watchLater
+          ? /* html */`<span tabindex="0"  class="action remove-watch-later" data-video-id="${this.video.id}">✅ In Watch Later</span>`
+          : /* html */`<span tabindex="0"  class="action add-watch-later" data-video-id="${this.video.id}">⏰ Watch Later</span>`}
+        <span tabindex="0" class="action share" data-video-id="${this.video.id}">🔗 Share</span>
       </div>
     `
 
@@ -99,42 +117,59 @@ class VideoElement extends HTMLElement {
   registerEvents () {
     addClickListener(this.querySelector('.action.download'), this.downloadVideoHandler.bind(this))
     addClickListener(this.querySelector('.action.delete'), this.deleteVideoHandler.bind(this))
-    addClickListener(this.querySelector('.action.summarize'), this.summarizeVideoHandler.bind(this))
-    addClickListener(this.querySelector('.action.show-summary'), this.showSummaryHandler.bind(this))
-    addClickListener(this.querySelector('.action.ignore'), this.toggleIgnoreVideoHandler.bind(this))
-    addClickListener(this.querySelector('.action.open-externally'), this.openExternallyHandler.bind(this))
+    addClickListener(this.querySelector('.action.add-watch-later'), this.addWatchLaterHandler.bind(this))
+    addClickListener(this.querySelector('.action.remove-watch-later'), this.removeWatchLaterHandler.bind(this))
+    addClickListener(this.querySelector('.action.share'), this.shareVideoHandler.bind(this))
     addClickListener(this.querySelector('.channel-name'), this.filterByChannelHandler.bind(this))
     addClickListener(this.querySelector('.play.video-placeholder'), this.watchVideoHandler.bind(this))
+    addClickListener(this.querySelector('.video-wrapper img'), this.thumbnailClickHandler.bind(this))
   }
 
   unregisterEvents () {
     removeClickListener(this.querySelector('.action.download'), this.downloadVideoHandler.bind(this))
     removeClickListener(this.querySelector('.action.delete'), this.deleteVideoHandler.bind(this))
-    removeClickListener(this.querySelector('.action.summarize'), this.summarizeVideoHandler.bind(this))
-    removeClickListener(this.querySelector('.action.show-summary'), this.showSummaryHandler.bind(this))
-    removeClickListener(this.querySelector('.action.ignore'), this.toggleIgnoreVideoHandler.bind(this))
-    removeClickListener(this.querySelector('.action.open-externally'), this.openExternallyHandler.bind(this))
+    removeClickListener(this.querySelector('.action.add-watch-later'), this.addWatchLaterHandler.bind(this))
+    removeClickListener(this.querySelector('.action.remove-watch-later'), this.removeWatchLaterHandler.bind(this))
+    removeClickListener(this.querySelector('.action.share'), this.shareVideoHandler.bind(this))
     removeClickListener(this.querySelector('.channel-name'), this.filterByChannelHandler.bind(this))
     removeClickListener(this.querySelector('.play.video-placeholder'), this.watchVideoHandler.bind(this))
+    removeClickListener(this.querySelector('.video-wrapper img'), this.thumbnailClickHandler.bind(this))
     this.querySelector('video') && this.unregisterVideoEvents(this.querySelector('video'))
   }
 
   watchVideoHandler (event) {
     event.preventDefault()
+    
     this.querySelector('.play.video-placeholder').outerHTML = /* html */`
-    <video controls playsinline style="user-select: none; width: 400px; width: -webkit-fill-available;">
-      <source src="/api/videos/${this.video.id}.${this.video.format || 'mp4'}" type="video/${this.video.format || 'mp4'}" />
-      ${store.get(store.showCaptionsKey)
-        ? /* html */`<track default kind="captions" srclang="en" src="/api/captions/${this.video.id}" />`
-        : ''}
-      <p>
-        Your browser does not support the video tag.
-        Download the video instead <a href="/api/videos/${this.video.id}" target="_blank">here</a>
-      </p>
-    </video>`
+    <div class="video-wrapper">
+      <video controls playsinline style="user-select: none; width: 320px; width: -webkit-fill-available;">
+        <source src="/api/videos/${this.video.id}.${this.video.format || 'mp4'}" type="video/${this.video.format || 'mp4'}" />
+        ${store.get(store.showCaptionsKey)
+          ? /* html */`<track default kind="captions" srclang="en" src="/api/captions/${this.video.id}" />`
+          : ''}
+        <p>
+          Your browser does not support the video tag.
+          Download the video instead <a href="/api/videos/${this.video.id}" target="_blank">here</a>
+        </p>
+      </video>
+      <div class="video-controls">
+        <button class="speed-control active" data-speed="1">1x</button>
+        <button class="speed-control" data-speed="1.25">1.25x</button>
+        <button class="speed-control" data-speed="1.5">1.5x</button>
+        <button class="speed-control" data-speed="2">2x</button>
+      </div>
+    </div>`
 
-    this.querySelector('video').play()
-    this.registerVideoEvents(this.querySelector('video'))
+    const video = this.querySelector('video')
+    
+    // Set up speed controls
+    this.setupSpeedControls(video)
+    
+    // Resume playback from saved position
+    this.resumePlayback(video)
+    
+    video.play()
+    this.registerVideoEvents(video)
   }
 
   downloadVideoHandler (event) {
@@ -223,16 +258,196 @@ class VideoElement extends HTMLElement {
       })
   }
 
-  openExternallyHandler (event) {
-    this.querySelector('video') && this.querySelector('video').pause()
+  async shareVideoHandler (event) {
+    event.preventDefault()
+    
+    const youtubeUrl = `https://www.youtube.com/watch?v=${this.video.id}`
+    
+    try {
+      await navigator.clipboard.writeText(youtubeUrl)
+      
+      // Show visual feedback
+      const button = event.target
+      const originalText = button.textContent
+      button.textContent = '✅ Copied!'
+      
+      // Reset button text after 2 seconds
+      setTimeout(() => {
+        button.textContent = originalText
+      }, 2000)
+      
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err)
+      
+      // Fallback: show the URL to user
+      const button = event.target
+      const originalText = button.textContent
+      button.textContent = '❌ Copy failed'
+      
+      // Reset button text after 2 seconds
+      setTimeout(() => {
+        button.textContent = originalText
+      }, 2000)
+      
+      // Also try to select the URL if possible (fallback method)
+      try {
+        // Create a temporary textarea with the URL
+        const textarea = document.createElement('textarea')
+        textarea.value = youtubeUrl
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        
+        button.textContent = '✅ Copied!'
+        setTimeout(() => {
+          button.textContent = originalText
+        }, 2000)
+      } catch (fallbackErr) {
+        console.error('Fallback copy also failed:', fallbackErr)
+      }
+    }
+  }
+
+  addWatchLaterHandler (event) {
+    event.preventDefault()
+
+    addToast('Adding to watch later...')
+
+    fetch('/api/watch-later', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoId: this.video.id })
+    })
+      .then(response => {
+        if (response.ok) {
+          this.video.watchLater = true
+          this.render()
+          addToast('Added to watch later!')
+        } else {
+          throw new Error('Failed to add to watch later')
+        }
+      })
+      .catch((error) => {
+        console.error('Error adding to watch later:', error)
+        addToast('Failed to add to watch later')
+      })
+  }
+
+  removeWatchLaterHandler (event) {
+    event.preventDefault()
+
+    addToast('Removing from watch later...')
+
+    fetch('/api/watch-later', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoId: this.video.id })
+    })
+      .then(response => {
+        if (response.ok) {
+          this.video.watchLater = false
+          this.render()
+          addToast('Removed from watch later!')
+        } else {
+          throw new Error('Failed to remove from watch later')
+        }
+      })
+      .catch((error) => {
+        console.error('Error removing from watch later:', error)
+        addToast('Failed to remove from watch later')
+      })
   }
 
   filterByChannelHandler (event) {
     const $searchInput = document.querySelector('#search')
-    const channel = `@${this.video.channelName}`
+    const displayName = channelDisplayNames[this.video.channelName] || this.video.channelName
+    const channel = `@${displayName}`
     $searchInput.value = ($searchInput && $searchInput.value !== channel) ? channel : ''
     $searchInput.dispatchEvent(new Event('input'))
   }
+
+  thumbnailClickHandler (event) {
+    event.preventDefault()
+    // Do nothing for undownloaded videos
+    if (!this.video.downloaded) return
+  }
+
+
+  setupSpeedControls (video) {
+    const speedButtons = this.querySelectorAll('.speed-control')
+    speedButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const speed = parseFloat(button.dataset.speed)
+        video.playbackRate = speed
+        
+        // Update active button
+        speedButtons.forEach(btn => btn.classList.remove('active'))
+        button.classList.add('active')
+        
+        // Save speed preference
+        localStorage.setItem('videoPlaybackRate', speed.toString())
+      })
+    })
+    
+    // Load saved speed preference
+    const savedSpeed = localStorage.getItem('videoPlaybackRate')
+    if (savedSpeed) {
+      const speed = parseFloat(savedSpeed)
+      video.playbackRate = speed
+      speedButtons.forEach(btn => {
+        btn.classList.remove('active')
+        if (parseFloat(btn.dataset.speed) === speed) {
+          btn.classList.add('active')
+        }
+      })
+    }
+  }
+
+  resumePlayback (video) {
+    // Load saved position
+    const savedPosition = this.getSavedPosition()
+    if (savedPosition && savedPosition > 10) { // Only resume if more than 10 seconds in
+      video.addEventListener('loadedmetadata', () => {
+        video.currentTime = savedPosition
+      }, { once: true })
+    }
+    
+    // Save position every 5 seconds
+    this.saveInterval = setInterval(() => {
+      if (video.currentTime > 0) {
+        this.savePosition(video.currentTime)
+      }
+    }, 5000)
+    
+    // Save position when video ends or is paused for a while
+    video.addEventListener('ended', () => {
+      this.clearSavedPosition()
+      if (this.saveInterval) clearInterval(this.saveInterval)
+    })
+    
+    video.addEventListener('pause', () => {
+      this.savePosition(video.currentTime)
+    })
+  }
+
+  getSavedPosition () {
+    const key = `video-position-${this.video.id}`
+    const saved = localStorage.getItem(key)
+    return saved ? parseFloat(saved) : 0
+  }
+
+  savePosition (currentTime) {
+    const key = `video-position-${this.video.id}`
+    localStorage.setItem(key, currentTime.toString())
+  }
+
+  clearSavedPosition () {
+    const key = `video-position-${this.video.id}`
+    localStorage.removeItem(key)
+  }
+
 
   registerVideoEvents (video) {
     video.addEventListener('play', () => {
@@ -244,6 +459,11 @@ class VideoElement extends HTMLElement {
 
   unregisterVideoEvents (video) {
     video.removeEventListener('play', this.pauseOtherVideos.bind(this, video))
+    // Clean up save interval
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval)
+      this.saveInterval = null
+    }
   }
 
   pauseOtherVideos (video) {

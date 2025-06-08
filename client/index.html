@@ -3,14 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>my-yt</title>
+  <title>YouTube</title>
   <link rel="stylesheet" href="/main.css">
   <link rel="stylesheet" href="/normalize.css">
   <meta name="mobile-web-app-capable" content="yes">
   <base href="/">
   <meta name="theme-color" content="#fff">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/icon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon.png"/>
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
 </head>
 <body>
   <header>
@@ -19,6 +22,7 @@
       <div class="flex-1 header-spacer"></div>
       <search-videos data-videos-container="videos-container"></search-videos>
       <div class="flex-1 tar p-v-2">
+        <button id="refresh-videos" title="Check for new videos">🔄</button>
         <a href="/settings">Settings</a>
         <a tabindex="-1" href="https://github.com/christian-fei/my-yt" target="_blank">📖</a>
       </div>
@@ -55,9 +59,13 @@
       <br>
       <add-channel-form></add-channel-form>
       <br>
+      <import-channels-form></import-channels-form>
+      <br>
       <video-quality-form></video-quality-form>
       <br>
       <manage-disk-space-form></manage-disk-space-form>
+      <br>
+      <auto-cleanup-form></auto-cleanup-form>
       <br>
       <transcode-videos-form></transcode-videos-form>
       <br>
@@ -108,12 +116,44 @@
         </div>
       </form>
       <br>
+      <form>
+        <div class="flex space-between">
+          <label for="theatre-mode">
+            Theatre mode
+          </label>
+          <input type="checkbox" id="theatre-mode"/>
+        </div>
+        <div><small>Videos expand to fill the entire window when playing</small></div>
+      </form>
+      <br>
       <excluded-terms-form></excluded-terms-form>
       <br>
       <manage-channels-form></manage-channels-form>
       <br>
       <br>
       <br>
+    </div>
+  </template>
+
+  <template id="watch-template">
+    <div id="watch" class="contain">
+      <div id="video-player-container">
+        <div class="loading">Loading video...</div>
+      </div>
+      <div id="video-info">
+        <h2 id="video-title"></h2>
+        <div id="video-metadata">
+          <span id="video-channel"></span>
+          <span id="video-date"></span>
+          <span id="video-views"></span>
+        </div>
+        <div id="video-actions">
+          <button id="download-video">⬇️ Download</button>
+          <button id="watch-later-video">⏰ Watch Later</button>
+          <button id="theatre-mode">🎭 Theatre Mode</button>
+          <button id="share-video">🔗 Share</button>
+        </div>
+      </div>
     </div>
   </template>
 
@@ -133,11 +173,13 @@
   <script type="module" src="/components/sse-connection.js"></script>
   <script type="module" src="/components/videos-container.js"></script>
   <script type="module" src="/components/forms/add-channel-form.js"></script>
+  <script type="module" src="/components/forms/import-channels-form.js"></script>
   <script type="module" src="/components/forms/manage-channels-form.js"></script>
   <script type="module" src="/components/forms/video-quality-form.js"></script>
   <script type="module" src="/components/forms/manage-disk-space-form.js"></script>
   <script type="module" src="/components/forms/transcode-videos-form.js"></script>
   <script type="module" src="/components/forms/excluded-terms-form.js"></script>
+  <script type="module" src="/components/forms/auto-cleanup-form.js"></script>
   <script type="module" src="/main.js"></script>
   <script type="module" src="/lib/router.js"></script>
 </body>

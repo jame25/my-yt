@@ -31,6 +31,16 @@ export function applyShowBigPlayer (showBigPlayer) {
   if ($showBigPlayerCheckbox) $showBigPlayerCheckbox.checked = showBigPlayer
 }
 
+export function applyTheatreMode (theatreMode) {
+  if (theatreMode) {
+    document.body.classList.add('theatre-mode')
+  } else {
+    document.body.classList.remove('theatre-mode')
+  }
+  const $theatreModeCheckbox = document.getElementById('theatre-mode')
+  if ($theatreModeCheckbox) $theatreModeCheckbox.checked = theatreMode
+}
+
 export function addClickListener ($el, handler) {
   if (!$el) return
   $el.addEventListener('click', handler)

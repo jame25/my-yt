@@ -5,6 +5,7 @@ export default class Store {
   showOriginalThumbnailKey = 'showOriginalThumbnail'
   showCaptionsKey = 'showCaptions'
   useTLDWTubeKey = 'useTLDWTube'
+  theatreModeKey = 'theatreMode'
   lastVideosKey = 'lastVideos'
   ignoreTermsKey = 'ignoreTerms'
 
@@ -14,17 +15,18 @@ export default class Store {
     if (!localStorage.getItem(this.showOriginalThumbnailKey)) localStorage.setItem(this.showOriginalThumbnailKey, 'false')
     if (!localStorage.getItem(this.showCaptionsKey)) localStorage.setItem(this.showCaptionsKey, 'true')
     if (!localStorage.getItem(this.useTLDWTubeKey)) localStorage.setItem(this.useTLDWTubeKey, 'false')
+    if (!localStorage.getItem(this.theatreModeKey)) localStorage.setItem(this.theatreModeKey, 'false')
     if (!localStorage.getItem(this.lastVideosKey)) localStorage.setItem(this.lastVideosKey, '{}')
     if (!localStorage.getItem(this.ignoreTermsKey)) localStorage.setItem(this.ignoreTermsKey, '[]')
   }
 
   toggle (key) {
-    if (![this.showThumbnailsKey, this.showBigPlayerKey, this.showOriginalThumbnailKey, this.showCaptionsKey, this.useTLDWTubeKey].includes(key)) return console.error('invalid key', key)
+    if (![this.showThumbnailsKey, this.showBigPlayerKey, this.showOriginalThumbnailKey, this.showCaptionsKey, this.useTLDWTubeKey, this.theatreModeKey].includes(key)) return console.error('invalid key', key)
     localStorage.setItem(key, localStorage.getItem(key) === 'true' ? 'false' : 'true')
   }
 
   get (key) {
-    if (![this.showThumbnailsKey, this.showBigPlayerKey, this.showOriginalThumbnailKey, this.showCaptionsKey, this.useTLDWTubeKey, this.lastVideosKey, this.ignoreTermsKey].includes(key)) return console.error('invalid key', key)
+    if (![this.showThumbnailsKey, this.showBigPlayerKey, this.showOriginalThumbnailKey, this.showCaptionsKey, this.useTLDWTubeKey, this.theatreModeKey, this.lastVideosKey, this.ignoreTermsKey].includes(key)) return console.error('invalid key', key)
     return JSON.parse(localStorage.getItem(key))
   }
 

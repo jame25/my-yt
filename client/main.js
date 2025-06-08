@@ -73,12 +73,37 @@ window.eventSource.onmessage = (message) => {
       return
     }
     if (data.type === 'downloaded' && data.videoId && data.downloaded !== undefined) {
+      // Handle watch page downloads
+      if (window.watchPageDownloadHandler) {
+        window.watchPageDownloadHandler(data)
+      }
+      
       ;[...document.querySelectorAll(`[data-video-id="${data.videoId}"]`)].forEach($video => {
         if (!$video.dataset.data) return
         const videoData = JSON.parse($video.dataset.data)
         videoData.downloaded = data.downloaded
         if (data.video) Object.assign(videoData, data.video)
         $video.dataset.data = JSON.stringify(videoData)
+        
+        // If video is currently streaming, update the source to use the complete file
+        if (data.downloaded) {
+          const video = $video.querySelector('video')
+          if (video) {
+            const currentSrc = video.src
+            if (currentSrc.includes('/api/stream/')) {
+              const newSrc = currentSrc.replace('/api/stream/', '/api/videos/')
+              video.src = newSrc
+              
+              // Remove streaming overlay if it exists
+              const overlay = $video.querySelector('.streaming-overlay')
+              if (overlay) {
+                overlay.innerHTML = '✅ Download complete!'
+                overlay.style.backgroundColor = 'rgba(0,150,0,0.8)'
+                setTimeout(() => overlay.remove(), 2000)
+              }
+            }
+          }
+        }
       })
       return
     }
@@ -122,3 +147,66 @@ if ($state) {
     }
   }).observe($state, { attributes: true, childList: false, subtree: false })
 }
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Handle main page theatre mode
+    if (document.body.classList.contains('theatre-mode')) {
+      const playingVideo = document.querySelector('video-element.big video')
+      if (playingVideo) {
+        playingVideo.pause()
+        playingVideo.parentElement.classList.remove('big')
+      }
+    }
+    
+    // Handle watch page theatre mode
+    const watchDiv = document.getElementById('watch')
+    if (watchDiv && watchDiv.classList.contains('theatre-mode')) {
+      watchDiv.classList.remove('theatre-mode')
+      const theatreModeBtn = document.getElementById('theatre-mode')
+      if (theatreModeBtn) {
+        theatreModeBtn.textContent = '🎭 Theatre Mode'
+        theatreModeBtn.title = 'Enter theatre mode'
+      }
+    }
+  }
+})
+
+// Manual refresh functionality
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshButton = document.getElementById('refresh-videos')
+  if (refreshButton) {
+    refreshButton.addEventListener('click', async () => {
+      refreshButton.disabled = true
+      refreshButton.textContent = '⏳'
+      refreshButton.title = 'Checking for new videos...'
+      
+      try {
+        const response = await fetch('/api/refresh-videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        
+        if (response.ok) {
+          // The SSE connection will handle showing the results
+          setTimeout(() => {
+            refreshButton.disabled = false
+            refreshButton.textContent = '🔄'
+            refreshButton.title = 'Check for new videos'
+          }, 2000)
+        } else {
+          throw new Error('Failed to start refresh')
+        }
+      } catch (error) {
+        console.error('Error refreshing videos:', error)
+        refreshButton.disabled = false
+        refreshButton.textContent = '❌'
+        refreshButton.title = 'Error occurred'
+        setTimeout(() => {
+          refreshButton.textContent = '🔄'
+          refreshButton.title = 'Check for new videos'
+        }, 3000)
+      }
+    })
+  }
+})

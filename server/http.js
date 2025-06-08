@@ -1,12 +1,15 @@
 import http from 'http'
+import https from 'https'
+import fs from 'fs'
 import { URL } from 'url'
 import { handleSSE, broadcastSSE } from './sse.js'
 import { updateAndPersistVideos } from '../lib/update-videos.js'
+import { startAutoCleanup } from '../lib/auto-cleanup.js'
 import apiHandler from './router/api.js'
 import appHandler from './router/app.js'
 import Repository from '../lib/repository.js'
 
-export function createServer (repo = new Repository()) {
+export function createServer (repo = new Repository(), useHttps = false) {
   const stateChangeHandler = {
     get (target, key) {
       if (typeof target[key] === 'object' && target[key] !== null) {
@@ -29,8 +32,10 @@ export function createServer (repo = new Repository()) {
   const connections = []
 
   let lastAdded = Date.now()
-  runUpdateVideos(repo, connections)
   setInterval(runUpdateVideos, 1000 * 60 * 30, repo, connections)
+  
+  // Start auto-cleanup scheduler
+  startAutoCleanup(repo, connections)
   function runUpdateVideos (repo, connections) {
     console.log('update videos')
     updateAndPersistVideos(repo, (err, data) => {
@@ -53,9 +58,10 @@ export function createServer (repo = new Repository()) {
     })
   }
 
-  return http.createServer(async (req, res) => {
+  const requestHandler = async (req, res) => {
     try {
-      const url = new URL(req.url, `http://${req.headers.host}`)
+      const protocol = useHttps ? 'https' : 'http'
+      const url = new URL(req.url, `${protocol}://${req.headers.host}`)
 
       if (req.headers.accept && req.headers.accept.indexOf('text/event-stream') >= 0) {
         handleSSE(res, connections)
@@ -68,5 +74,20 @@ export function createServer (repo = new Repository()) {
     } catch (error) {
       console.error(error)
     }
-  })
+  }
+
+  if (useHttps) {
+    try {
+      const options = {
+        key: fs.readFileSync('./ssl/key.pem'),
+        cert: fs.readFileSync('./ssl/cert.pem')
+      }
+      return https.createServer(options, requestHandler)
+    } catch (error) {
+      console.warn('HTTPS certificates not found, falling back to HTTP')
+      return http.createServer(requestHandler)
+    }
+  }
+
+  return http.createServer(requestHandler)
 }
