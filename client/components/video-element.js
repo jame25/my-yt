@@ -43,7 +43,16 @@ class VideoElement extends HTMLElement {
 
   attributeChangedCallback (name, _, newValue) {
     if (name === 'data-data') {
-      this.video = JSON.parse(this.dataset.data)
+      const newVideo = JSON.parse(this.dataset.data)
+      
+      // Check if we should skip re-rendering to preserve playing video
+      if (this.shouldSkipRerender(this.video, newVideo)) {
+        // Just update the stored video data without re-rendering
+        this.video = newVideo
+        return
+      }
+      
+      this.video = newVideo
       this.render()
     }
     if (name === 'data-downloading' && this.querySelector('.action.download')) {
@@ -56,6 +65,21 @@ class VideoElement extends HTMLElement {
 
   render () {
     if (!this.video) return
+
+    // Check if there's a playing video that we should preserve
+    const existingVideo = this.querySelector('video')
+    const isVideoPlaying = existingVideo && !existingVideo.paused && !existingVideo.ended
+    
+    // Store video state if playing
+    let videoState = null
+    if (isVideoPlaying) {
+      videoState = {
+        currentTime: existingVideo.currentTime,
+        playbackRate: existingVideo.playbackRate,
+        volume: existingVideo.volume,
+        muted: existingVideo.muted
+      }
+    }
 
     this.unregisterEvents()
 
@@ -112,6 +136,44 @@ class VideoElement extends HTMLElement {
     }
 
     this.registerEvents()
+    
+    // Restore video state if it was playing before re-render
+    if (videoState) {
+      const newVideo = this.querySelector('video')
+      if (newVideo) {
+        newVideo.currentTime = videoState.currentTime
+        newVideo.playbackRate = videoState.playbackRate
+        newVideo.volume = videoState.volume
+        newVideo.muted = videoState.muted
+        newVideo.play().catch(error => {
+          console.log('Could not resume video playback:', error)
+        })
+      }
+    }
+  }
+
+  shouldSkipRerender (oldVideo, newVideo) {
+    if (!oldVideo || !newVideo) return false
+    
+    // Check if there's a currently playing video
+    const existingVideo = this.querySelector('video')
+    const isVideoPlaying = existingVideo && !existingVideo.paused && !existingVideo.ended
+    
+    if (!isVideoPlaying) return false
+    
+    // Define critical properties that would require a re-render
+    const criticalProps = ['id', 'downloaded', 'title', 'thumbnail']
+    
+    // Check if any critical properties changed
+    for (const prop of criticalProps) {
+      if (oldVideo[prop] !== newVideo[prop]) {
+        return false // Need to re-render
+      }
+    }
+    
+    // If only non-critical properties changed (like addedAt, viewCount, etc.)
+    // and video is playing, skip re-render
+    return true
   }
 
   registerEvents () {
