@@ -374,8 +374,6 @@ class VideoElement extends HTMLElement {
   addWatchLaterHandler (event) {
     event.preventDefault()
 
-    addToast('Adding to watch later...')
-
     fetch('/api/watch-later', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -398,8 +396,6 @@ class VideoElement extends HTMLElement {
 
   removeWatchLaterHandler (event) {
     event.preventDefault()
-
-    addToast('Removing from watch later...')
 
     fetch('/api/watch-later', {
       method: 'DELETE',
