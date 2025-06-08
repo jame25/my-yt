@@ -1,4 +1,4 @@
-# my-yt
+# my-yt-modded
 
 A clean and minimal youtube frontend supported by yt-dlp, and optionally your local AI model, to make your youtube experience local, mindful and succint.
 
