@@ -237,3 +237,125 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
 })
+
+// Global PiP Controls Management
+function setupGlobalPiPControls() {
+  const closeBtn = document.getElementById('pip-close')
+  const returnBtn = document.getElementById('pip-return')
+  
+  if (closeBtn && returnBtn) {
+    closeBtn.addEventListener('click', () => {
+      const pipContainer = document.getElementById('pip-container')
+      const pipWrapper = document.getElementById('pip-video-wrapper')
+      
+      if (pipContainer && pipWrapper) {
+        pipWrapper.innerHTML = ''
+        pipContainer.classList.add('hidden')
+        window.pipVideoData = null
+        console.log('PiP closed globally')
+      }
+    })
+    
+    returnBtn.addEventListener('click', () => {
+      if (window.pipVideoData && window.pipVideoData.videoId) {
+        if (window.pipVideoData.fromMainUI) {
+          // Return to home page and restore video in theatre mode
+          history.pushState({}, '', '/')
+          const popStateEvent = new PopStateEvent('popstate', {})
+          dispatchEvent(popStateEvent)
+          
+          // Wait for the route to load, then restore the video
+          setTimeout(() => {
+            if (window.restoreVideoInMainUI) {
+              window.restoreVideoInMainUI()
+            }
+          }, 100)
+        } else {
+          // Navigate back to watch page with current video
+          const url = `/watch?v=${window.pipVideoData.videoId}`
+          history.pushState({}, '', url)
+          const popStateEvent = new PopStateEvent('popstate', {})
+          dispatchEvent(popStateEvent)
+        }
+      }
+    })
+  }
+}
+
+// Initialize global PiP controls when page loads
+setupGlobalPiPControls()
+
+// Make PiP window draggable
+function makePiPDraggable() {
+  const pipContainer = document.getElementById('pip-container')
+  let isDragging = false
+  let currentX
+  let currentY
+  let initialX
+  let initialY
+  let xOffset = 0
+  let yOffset = 0
+
+  function dragStart(e) {
+    if (e.target.closest('.pip-controls')) return // Don't drag when clicking controls
+    
+    if (e.type === "touchstart") {
+      initialX = e.touches[0].clientX - xOffset
+      initialY = e.touches[0].clientY - yOffset
+    } else {
+      initialX = e.clientX - xOffset
+      initialY = e.clientY - yOffset
+    }
+
+    if (e.target === pipContainer || e.target.closest('#pip-video-wrapper')) {
+      isDragging = true
+      pipContainer.style.cursor = 'grabbing'
+    }
+  }
+
+  function dragEnd(e) {
+    initialX = currentX
+    initialY = currentY
+    isDragging = false
+    pipContainer.style.cursor = 'grab'
+  }
+
+  function drag(e) {
+    if (isDragging) {
+      e.preventDefault()
+      
+      if (e.type === "touchmove") {
+        currentX = e.touches[0].clientX - initialX
+        currentY = e.touches[0].clientY - initialY
+      } else {
+        currentX = e.clientX - initialX
+        currentY = e.clientY - initialY
+      }
+
+      xOffset = currentX
+      yOffset = currentY
+
+      // Keep PiP within viewport bounds
+      const rect = pipContainer.getBoundingClientRect()
+      const maxX = window.innerWidth - rect.width
+      const maxY = window.innerHeight - rect.height
+      
+      xOffset = Math.max(0, Math.min(maxX, xOffset))
+      yOffset = Math.max(0, Math.min(maxY, yOffset))
+
+      pipContainer.style.transform = `translate(${xOffset}px, ${yOffset}px)`
+    }
+  }
+
+  pipContainer.addEventListener("touchstart", dragStart, false)
+  pipContainer.addEventListener("touchend", dragEnd, false)
+  pipContainer.addEventListener("touchmove", drag, false)
+  pipContainer.addEventListener("mousedown", dragStart, false)
+  pipContainer.addEventListener("mouseup", dragEnd, false)
+  pipContainer.addEventListener("mousemove", drag, false)
+  
+  pipContainer.style.cursor = 'grab'
+}
+
+// Initialize drag functionality
+makePiPDraggable()
