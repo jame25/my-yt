@@ -103,6 +103,7 @@ const routes = {
 
     cleanup () {
       this.cleanupDownloadListener()
+      this.moveToPiP()
     },
     
     async loadVideo(videoId) {
@@ -136,6 +137,9 @@ const routes = {
 
           if (video.downloaded) {
             this.setupVideoPlayer(container, video)
+            
+            // Check if returning from PiP mode
+            this.restoreFromPiP(videoId, container)
           } else {
             // Show thumbnail instead of downloading automatically
             this.setupThumbnailView(container, video)
@@ -461,6 +465,148 @@ const routes = {
       }
     },
 
+    moveToPiP() {
+      const videoContainer = document.getElementById('video-player-container')
+      const videoElement = videoContainer?.querySelector('video')
+      
+      if (videoElement && !videoElement.paused) {
+        const pipContainer = document.getElementById('pip-container')
+        const pipWrapper = document.getElementById('pip-video-wrapper')
+        
+        if (pipContainer && pipWrapper) {
+          // Store video metadata for PiP
+          window.pipVideoData = {
+            videoId: this.currentVideo?.id,
+            title: this.currentVideo?.title,
+            currentTime: videoElement.currentTime,
+            src: videoElement.src
+          }
+          
+          // Clone the video element to preserve state
+          const clonedVideo = videoElement.cloneNode(true)
+          
+          // Store the original video's state before moving
+          const wasPlaying = !videoElement.paused
+          const currentTime = videoElement.currentTime
+          
+          // Immediately pause the original video to prevent duplicate playback
+          videoElement.pause()
+          
+          // Move video to PiP container
+          pipWrapper.innerHTML = ''
+          pipWrapper.appendChild(clonedVideo)
+          
+          // Set up the cloned video to continue seamlessly
+          const setupPiPVideo = () => {
+            clonedVideo.currentTime = currentTime
+            if (wasPlaying) {
+              clonedVideo.play().catch(e => console.log('PiP autoplay prevented:', e))
+            }
+            console.log('Video moved to PiP mode from Watch page')
+          }
+          
+          // If video is already loaded, set it up immediately
+          if (clonedVideo.readyState >= 2) {
+            setupPiPVideo()
+          } else {
+            // Wait for video to be ready and then set it up
+            clonedVideo.addEventListener('canplay', setupPiPVideo, { once: true })
+          }
+          
+          // Show PiP container
+          pipContainer.classList.remove('hidden')
+          
+          // Set up PiP event handlers
+          this.setupPiPControls()
+          
+          console.log('Video moved to PiP mode')
+        }
+      }
+    },
+
+    setupPiPControls() {
+      const pipContainer = document.getElementById('pip-container')
+      const closeBtn = document.getElementById('pip-close')
+      const returnBtn = document.getElementById('pip-return')
+      
+      // Remove existing listeners to prevent duplicates
+      closeBtn.replaceWith(closeBtn.cloneNode(true))
+      returnBtn.replaceWith(returnBtn.cloneNode(true))
+      
+      // Get fresh references after cloning
+      const newCloseBtn = document.getElementById('pip-close')
+      const newReturnBtn = document.getElementById('pip-return')
+      
+      // Close PiP
+      newCloseBtn.addEventListener('click', () => {
+        this.closePiP()
+      })
+      
+      // Return to full view
+      newReturnBtn.addEventListener('click', () => {
+        this.returnToFullView()
+      })
+    },
+
+    closePiP() {
+      const pipContainer = document.getElementById('pip-container')
+      const pipWrapper = document.getElementById('pip-video-wrapper')
+      
+      if (pipContainer && pipWrapper) {
+        pipWrapper.innerHTML = ''
+        pipContainer.classList.add('hidden')
+        window.pipVideoData = null
+        console.log('PiP closed')
+      }
+    },
+
+    returnToFullView() {
+      if (window.pipVideoData && window.pipVideoData.videoId) {
+        if (window.pipVideoData.fromMainUI) {
+          // Return to home page and restore video in theatre mode
+          history.pushState({}, '', '/')
+          const popStateEvent = new PopStateEvent('popstate', {})
+          dispatchEvent(popStateEvent)
+          
+          // Wait for the route to load, then restore the video
+          setTimeout(() => {
+            restoreVideoInMainUI()
+          }, 100)
+        } else {
+          // Navigate back to watch page with current video
+          const url = `/watch?v=${window.pipVideoData.videoId}`
+          history.pushState({}, '', url)
+          const popStateEvent = new PopStateEvent('popstate', {})
+          dispatchEvent(popStateEvent)
+        }
+      }
+    },
+
+    restoreFromPiP(videoId, container) {
+      if (window.pipVideoData && window.pipVideoData.videoId === videoId) {
+        const pipWrapper = document.getElementById('pip-video-wrapper')
+        const pipVideo = pipWrapper?.querySelector('video')
+        
+        if (pipVideo) {
+          // Get the main video element that was just created
+          const mainVideo = container.querySelector('video')
+          
+          if (mainVideo) {
+            // Restore the playback position and state
+            mainVideo.currentTime = pipVideo.currentTime
+            if (!pipVideo.paused) {
+              mainVideo.play()
+            }
+            
+            console.log('Video restored from PiP mode')
+          }
+        }
+        
+        // Close the PiP window
+        this.closePiP()
+      }
+    },
+
     formatDate(dateString) {
       try {
         return new Intl.DateTimeFormat(navigator.language, {
@@ -495,7 +641,180 @@ document.querySelectorAll('[href="/"],[href="/settings"]').forEach(($el) => {
   })
 })
 
+function checkAndMoveToPiP() {
+  // Check for playing video in Watch page
+  const watchVideoContainer = document.getElementById('video-player-container')
+  const watchVideo = watchVideoContainer?.querySelector('video')
+  
+  if (watchVideo && !watchVideo.paused) {
+    // Get current video ID from the current URL
+    const currentUrlParams = new URLSearchParams(window.location.search)
+    const currentVideoId = currentUrlParams.get('v')
+    
+    // Get target path and video ID from the new location
+    const targetPath = location.pathname
+    const targetUrlParams = new URLSearchParams(location.search)
+    const targetVideoId = targetUrlParams.get('v')
+    
+    // Only move to PiP if we're not navigating to the same video or if leaving watch page entirely
+    if (targetPath !== '/watch' || targetVideoId !== currentVideoId) {
+      if (routes['/watch'] && routes['/watch'].moveToPiP) {
+        routes['/watch'].moveToPiP()
+        return // Exit early, watch page cleanup will handle the rest
+      }
+    }
+  }
+  
+  // Check for playing video in main UI (theatre mode)
+  const playingVideoElement = document.querySelector('video-element.big video')
+  
+  if (playingVideoElement && !playingVideoElement.paused) {
+    // Get video metadata from the video-element component
+    const videoElementComponent = playingVideoElement.closest('video-element')
+    const videoData = videoElementComponent ? JSON.parse(videoElementComponent.dataset.data || '{}') : {}
+    
+    moveToPiPFromMainUI(playingVideoElement, videoData)
+  }
+}
+
+function moveToPiPFromMainUI(videoElement, videoData) {
+  const pipContainer = document.getElementById('pip-container')
+  const pipWrapper = document.getElementById('pip-video-wrapper')
+  
+  if (pipContainer && pipWrapper) {
+    // Store video metadata for PiP
+    window.pipVideoData = {
+      videoId: videoData.id,
+      title: videoData.title,
+      currentTime: videoElement.currentTime,
+      src: videoElement.src,
+      fromMainUI: true
+    }
+    
+    // Clone the video element to preserve state
+    const clonedVideo = videoElement.cloneNode(true)
+    
+    // Store the original video's state before moving
+    const wasPlaying = !videoElement.paused
+    const currentTime = videoElement.currentTime
+    
+    // Move video to PiP container
+    pipWrapper.innerHTML = ''
+    pipWrapper.appendChild(clonedVideo)
+    
+    // Set up the cloned video to continue seamlessly
+    const setupPiPVideo = () => {
+      clonedVideo.currentTime = currentTime
+      if (wasPlaying) {
+        clonedVideo.play().catch(e => console.log('PiP autoplay prevented:', e))
+      }
+    }
+    
+    // If video is already loaded, set it up immediately
+    if (clonedVideo.readyState >= 2) {
+      setupPiPVideo()
+    } else {
+      // Wait for video to be ready and then set it up
+      clonedVideo.addEventListener('canplay', setupPiPVideo, { once: true })
+    }
+    
+    // Show PiP container
+    pipContainer.classList.remove('hidden')
+    
+    // Set up global PiP controls (they're already set up, but make sure they work)
+    console.log('Video moved to PiP mode from main UI')
+    
+    // Remove big class to exit theatre mode (but don't pause the original video)
+    const videoElementComponent = videoElement.closest('video-element')
+    if (videoElementComponent) {
+      videoElementComponent.classList.remove('big')
+    }
+  }
+}
+
+function restoreVideoInMainUI() {
+  if (window.pipVideoData && window.pipVideoData.fromMainUI) {
+    const pipWrapper = document.getElementById('pip-video-wrapper')
+    const pipVideo = pipWrapper?.querySelector('video')
+    
+    if (pipVideo && window.pipVideoData.videoId) {
+      console.log('Attempting to restore video:', window.pipVideoData.videoId)
+      
+      // Find the video element with matching ID
+      const targetVideoElement = document.querySelector(`video-element[data-video-id="${window.pipVideoData.videoId}"]`)
+      
+      if (targetVideoElement) {
+        console.log('Found target video element')
+        
+        // Get the video element and restore playback
+        let videoElement = targetVideoElement.querySelector('video')
+        
+        if (videoElement) {
+          console.log('Video element exists, restoring playback')
+          // Restore playback position and state
+          videoElement.currentTime = pipVideo.currentTime
+          if (!pipVideo.paused) {
+            videoElement.play()
+          }
+          
+          // Re-enter theatre mode
+          targetVideoElement.classList.add('big')
+          
+          console.log('Video restored to main UI theatre mode')
+          closePiPAfterRestore()
+        } else {
+          console.log('Video element does not exist, triggering watch button')
+          // If video element doesn't exist, trigger watch action to create it
+          const watchBtn = targetVideoElement.querySelector('.play.video-placeholder')
+          if (watchBtn) {
+            watchBtn.click()
+            
+            // Wait for video element to be created, then restore
+            setTimeout(() => {
+              const newVideoElement = targetVideoElement.querySelector('video')
+              if (newVideoElement) {
+                console.log('New video element created, restoring')
+                newVideoElement.currentTime = pipVideo.currentTime
+                if (!pipVideo.paused) {
+                  newVideoElement.play()
+                }
+                targetVideoElement.classList.add('big')
+                closePiPAfterRestore()
+              } else {
+                console.log('Failed to create video element')
+              }
+            }, 100)
+          } else {
+            console.log('Watch button not found')
+          }
+        }
+      } else {
+        console.log('Target video element not found for ID:', window.pipVideoData.videoId)
+      }
+    }
+  }
+}
+
+function closePiPAfterRestore() {
+  // Close PiP only after successful restoration
+  const pipContainer = document.getElementById('pip-container')
+  const pipWrapper = document.getElementById('pip-video-wrapper')
+  
+  if (pipContainer && pipWrapper) {
+    pipWrapper.innerHTML = ''
+    pipContainer.classList.add('hidden')
+    window.pipVideoData = null
+    console.log('PiP closed after successful restoration')
+  }
+}
+
+// Make restoreVideoInMainUI globally accessible
+window.restoreVideoInMainUI = restoreVideoInMainUI
+
 function handleRoute () {
+  // Check for playing videos and move to PiP before route change
+  checkAndMoveToPiP()
+  
   // Clean up previous route if it has a cleanup method
   if (window.currentRoute && routes[window.currentRoute] && routes[window.currentRoute].cleanup) {
     routes[window.currentRoute].cleanup()
