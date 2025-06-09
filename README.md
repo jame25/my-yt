@@ -21,11 +21,11 @@ A clean and minimal youtube frontend supported by yt-dlp, and optionally your lo
 - **Watch Later playlist** - Add videos to a personal playlist that automatically downloads them for offline viewing
 - **Enhanced video sharing** - One-click URL copying to clipboard with visual feedback
 - **Theatre Mode** - Full-width video viewing experience on watch pages with ESC key support
+- **Picture-in-Picture (PiP)** - Continue watching videos in a floating window while browsing other parts of the app
 - **Improved watch page experience** - Shows original YouTube thumbnails before download, seamless real-time updates when downloads complete
 - **Smart video management** - Download/Delete button that adapts based on video state, with proper confirmation dialogs
 - **Embed support** - Embeddable video player for external websites
 - Summarize video content using your local AI model (e.g. Ollama/LMStudio) or hosted provider (e.g. OpenAI, Anthropic)
-- Native Picture-in-Picture support
 - No dependencies (except for `nano-spawn`, which itself has no transient deps)
 - HTML/CSS only, no JS frameworks on client/server side
 - Subtitles using `<track>` element and WebVTT API
@@ -50,12 +50,23 @@ A clean and minimal youtube frontend supported by yt-dlp, and optionally your lo
 - **Keyboard shortcuts** - Press ESC to exit theatre mode on any page
 - **Smooth transitions** - Polished animations and responsive design
 
+### 🎥 Picture-in-Picture (PiP) Mode
+- **Seamless multitasking** - Continue watching videos while navigating to other parts of the application
+- **Uninterrupted playback** - Videos maintain their playback position and state when moved to PiP
+- **Smart activation** - Automatically activates when navigating away from playing videos (Watch page or theatre mode)
+- **Interactive controls** - Close or return to full view with hover controls on the PiP window
+- **Cross-page compatibility** - Works from both Watch page videos and main UI theatre mode videos
+- **State preservation** - Returns videos to their original viewing context (theatre mode or Watch page)
+- **Clean interface** - Hidden scrollbars throughout the application for immersive viewing
+- **Progress tracking** - Download progress percentage shown in collapsed state logs
+
 ### 📱 Improved Watch Page Experience
 - **Original thumbnails first** - Shows YouTube's original thumbnail immediately when opening watch URLs
 - **No auto-download** - Users control when videos are downloaded via explicit Download button
 - **Real-time updates** - Seamless transition from thumbnail to video player when download completes
 - **Smart button states** - Download button becomes Delete button after download, with proper state management
 - **Enhanced sharing** - Replaced "Open on YouTube" with integrated Share button for URL copying
+- **Clean thumbnails** - Removed play icon overlay from initial thumbnails for cleaner appearance
 
 ### 🔧 Technical Improvements
 - **Embed functionality** - `/embed/{videoId}` endpoint for embedding videos in external sites
@@ -79,6 +90,8 @@ The app will fetch the latest videos from your subscribed channels and display t
 Your subscriptions will be scraped from youtube every 30 minutes. No API key needed.
 
 Then you can download a video to watch it locally. If you host `my-yt` on your local network you can watch videos on all your devices.
+
+Videos can be played in theatre mode for immersive viewing, or in Picture-in-Picture mode allowing you to continue watching while browsing your video library.
 
 You can ignore videos that you don't want to watch.
 
@@ -253,3 +266,4 @@ build docker image
 ```bash
 docker build . -t my-yt:latest
 ```
+
