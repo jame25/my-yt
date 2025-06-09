@@ -45,6 +45,24 @@ window.eventSource.onmessage = (message) => {
       $state.classList.add('updated')
       downloadLogTimeoutHandle = setTimeout(() => $state.classList.remove('updated'), 10000)
 
+      // Extract download progress percentage
+      const progressMatch = data.line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/)
+      if (progressMatch) {
+        const percentage = progressMatch[1]
+        const $summary = $state.querySelector('summary')
+        if ($summary) {
+          $summary.textContent = `state & logs (${percentage}%)`
+        }
+      }
+
+      // Check for download completion
+      if (data.line.includes('[download] 100%') || data.line.includes('has already been downloaded')) {
+        const $summary = $state.querySelector('summary')
+        if ($summary) {
+          $summary.innerHTML = 'state & logs <span class="count"></span><span class="indicator"></span>'
+        }
+      }
+
       const $downloadLogLines = $state.querySelector(' .lines')
       $downloadLogLines.innerText += '\n' + data.line
       $downloadLogLines.scrollTop = $downloadLogLines.scrollHeight
@@ -73,6 +91,15 @@ window.eventSource.onmessage = (message) => {
       return
     }
     if (data.type === 'downloaded' && data.videoId && data.downloaded !== undefined) {
+      // Reset download progress in state bar when download completes
+      if (data.downloaded) {
+        const $state = document.querySelector('.state')
+        const $summary = $state?.querySelector('summary')
+        if ($summary) {
+          $summary.innerHTML = 'state & logs <span class="count"></span><span class="indicator"></span>'
+        }
+      }
+      
       // Handle watch page downloads
       if (window.watchPageDownloadHandler) {
         window.watchPageDownloadHandler(data)
