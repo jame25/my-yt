@@ -192,9 +192,6 @@ const routes = {
         <div class="thumbnail-view">
           <div class="thumbnail-container">
             <img src="${video.thumbnail}" alt="${video.title}" class="video-thumbnail" />
-            <div class="play-overlay">
-              <div class="play-button">▶</div>
-            </div>
           </div>
         </div>
       `
@@ -258,6 +255,19 @@ const routes = {
           this.getVideoFromApi(videoId).then(video => {
             if (video && video.downloaded) {
               this.setupVideoPlayer(container, video)
+              
+              // Update video info section
+              const title = document.getElementById('video-title')
+              const channel = document.getElementById('video-channel')
+              const date = document.getElementById('video-date')
+              const views = document.getElementById('video-views')
+              
+              if (title && channel && date && views) {
+                title.textContent = video.title || 'Unknown Title'
+                channel.textContent = video.channelName || 'Unknown Channel'
+                date.textContent = this.formatDate(video.publishedAt)
+                views.textContent = video.viewCount || 'Unknown views'
+              }
               
               // Update action buttons if they exist  
               const downloadBtn = document.getElementById('download-video')
