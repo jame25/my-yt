@@ -488,6 +488,7 @@ const routes = {
           // Store the original video's state before moving
           const wasPlaying = !videoElement.paused
           const currentTime = videoElement.currentTime
+          const playbackRate = videoElement.playbackRate
           
           // Immediately pause the original video to prevent duplicate playback
           videoElement.pause()
@@ -499,6 +500,7 @@ const routes = {
           // Set up the cloned video to continue seamlessly
           const setupPiPVideo = () => {
             clonedVideo.currentTime = currentTime
+            clonedVideo.playbackRate = playbackRate
             if (wasPlaying) {
               clonedVideo.play().catch(e => console.log('PiP autoplay prevented:', e))
             }
@@ -594,6 +596,7 @@ const routes = {
           if (mainVideo) {
             // Restore the playback position and state
             mainVideo.currentTime = pipVideo.currentTime
+            mainVideo.playbackRate = pipVideo.playbackRate
             if (!pipVideo.paused) {
               mainVideo.play()
             }
@@ -697,6 +700,7 @@ function moveToPiPFromMainUI(videoElement, videoData) {
     // Store the original video's state before moving
     const wasPlaying = !videoElement.paused
     const currentTime = videoElement.currentTime
+    const playbackRate = videoElement.playbackRate
     
     // Move video to PiP container
     pipWrapper.innerHTML = ''
@@ -705,6 +709,7 @@ function moveToPiPFromMainUI(videoElement, videoData) {
     // Set up the cloned video to continue seamlessly
     const setupPiPVideo = () => {
       clonedVideo.currentTime = currentTime
+      clonedVideo.playbackRate = playbackRate
       if (wasPlaying) {
         clonedVideo.play().catch(e => console.log('PiP autoplay prevented:', e))
       }
@@ -753,6 +758,7 @@ function restoreVideoInMainUI() {
           console.log('Video element exists, restoring playback')
           // Restore playback position and state
           videoElement.currentTime = pipVideo.currentTime
+          videoElement.playbackRate = pipVideo.playbackRate
           if (!pipVideo.paused) {
             videoElement.play()
           }
@@ -775,6 +781,7 @@ function restoreVideoInMainUI() {
               if (newVideoElement) {
                 console.log('New video element created, restoring')
                 newVideoElement.currentTime = pipVideo.currentTime
+                newVideoElement.playbackRate = pipVideo.playbackRate
                 if (!pipVideo.paused) {
                   newVideoElement.play()
                 }
